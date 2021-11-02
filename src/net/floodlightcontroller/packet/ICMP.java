@@ -25,6 +25,15 @@ import java.nio.ByteBuffer;
  */
 public class ICMP extends BasePacket {
     public static final byte TYPE_ECHO_REQUEST = 0x8;
+    public static final byte TYPE_TIME_EXCEED = (byte) 11;
+    public static final byte TYPE_DESTINATION_UNREACHABLE = (byte) 3;
+    public static final byte TYPE_ECHO_REPLY = (byte) 0;
+    
+    public static final byte CODE_TTL_ZERO = (byte) 0;
+    public static final byte CODE_UNREACHABLE_NET = (byte) 0;
+    public static final byte CODE_UNREACHABLE_HOST = (byte) 1;
+    public static final byte CODE_UNREACHABLE_PORT = (byte) 3;
+    public static final byte CODE_ECHO_REPLY = (byte) 0;
 
     protected byte icmpType;
     protected byte icmpCode;
