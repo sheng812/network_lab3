@@ -168,6 +168,17 @@ public class RouteTable
         }
 	}
 	
+	public void insert2(int dstIp, int gwIp, int maskIp, Iface iface, long updatedTime, int metric)
+	{
+		RouteEntry entry = new RouteEntry(dstIp, gwIp, maskIp, iface);
+		entry.setMetric(metric);
+		entry.setUpdatedAt(updatedTime);
+        synchronized(this.entries)
+        { 
+            this.entries.add(entry);
+        }
+	}
+	
 	/**
 	 * Remove an entry from the route table.
 	 * @param dstIP destination IP of the entry to remove
@@ -206,6 +217,26 @@ public class RouteTable
             entry.setInterface(iface);
         }
         return true;
+	}
+	
+	public boolean update2(int dstIp, int maskIp, int gwIp, 
+            Iface iface, long updatedAt, int metric)
+	{
+        synchronized(this.entries)
+        {
+            RouteEntry entry = this.find(dstIp, maskIp);
+            if (null == entry)
+            { return false; }
+            entry.setGatewayAddress(gwIp);
+            entry.setInterface(iface);
+            entry.setUpdatedAt(updatedAt);
+            entry.setMetric(metric);
+        }
+        return true;
+	}
+	
+	public List<RouteEntry> getEntries() {
+		return this.entries;
 	}
 
     /**

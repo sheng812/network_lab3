@@ -22,6 +22,10 @@ public class RouteEntry
 	 * the destination or gateway */
 	private Iface iface;
 	
+	// time of the route entry last upudated
+	private long updatedAt;
+	private int metric;
+	
 	/**
 	 * Create a new route table entry.
 	 * @param destinationAddress destination IP address
@@ -37,6 +41,8 @@ public class RouteEntry
 		this.gatewayAddress = gatewayAddress;
 		this.maskAddress = maskAddress;
 		this.iface = iface;
+		this.updatedAt = -1;
+		this.metric = Integer.MAX_VALUE;
 	}
 	
 	/**
@@ -60,6 +66,9 @@ public class RouteEntry
 	public int getMaskAddress()
 	{ return this.maskAddress; }
 	
+	public void setMaskAddress(int maskAddress)
+	{ this.maskAddress = maskAddress; }
+	
 	/**
 	 * @return the router interface out which packets should be sent to 
 	 *         reach the destination or gateway
@@ -69,6 +78,18 @@ public class RouteEntry
 
     public void setInterface(Iface iface)
     { this.iface = iface; }
+    
+    public long getUpdatedAt()
+    { return this.updatedAt; }
+    
+    public void setUpdatedAt(long updatedAt)
+    { this.updatedAt = updatedAt; }
+    
+    public int getMetric()
+    { return this.metric; }
+    
+    public void setMetric(int metric)
+    { this.metric = metric; }
 	
 	public String toString()
 	{
