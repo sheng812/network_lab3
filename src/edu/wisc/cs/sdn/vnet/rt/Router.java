@@ -1,6 +1,7 @@
 package edu.wisc.cs.sdn.vnet.rt;
 
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import edu.wisc.cs.sdn.vnet.Device;
@@ -30,6 +31,7 @@ public class Router extends Device
 	
 	public static final long ROUTETEBLE_TIME_OUT = 30000;
 	public static final long RIP_RESPONSE_INTERVAL = 10000;
+	static final Object lockObj = new Object();
 	
 	/**
 	 * Creates a router for a specific host.
@@ -135,9 +137,11 @@ public class Router extends Device
 				ByteBuffer wrapped = ByteBuffer.wrap(arpPacket.getSenderProtocolAddress());
 				ip = wrapped.getInt();
 				arpCache.insert(MACAddress.valueOf(arpPacket.getSenderHardwareAddress()), ip);
-				for (EtherpacketAndInIface ether : ipToQueue.get(ip)) {
-					ether.ethernet.setDestinationMACAddress(arpPacket.getSenderHardwareAddress());
-					sendPacket(ether.ethernet, inIface);
+				if (ipToQueue.get(ip) != null) {
+					for (EtherpacketAndInIface ether : ipToQueue.get(ip)) {
+						ether.ethernet.setDestinationMACAddress(arpPacket.getSenderHardwareAddress());
+						sendPacket(ether.ethernet, inIface);
+					}
 				}
 				// remove queue
 				ipToQueue.remove(ip);
@@ -155,6 +159,7 @@ public class Router extends Device
 		// Get IP header
 		IPv4 ipPacket = (IPv4)etherPacket.getPayload();
         System.out.println("Handle IP packet");
+        System.out.println(ipPacket.getProtocol());
 
         // Verify checksum
         short origCksum = ipPacket.getChecksum();
@@ -187,12 +192,14 @@ public class Router extends Device
      			{
      			case RIPv2.COMMAND_REQUEST:
      				sendRipReply(etherPacket, inIface);
+     				System.out.println("request");
      				break;
      			case RIPv2.COMMAND_RESPONSE:
+     				System.out.println("response");
      				ripResponseHandler(rip, inIface);
      				break;
      			}
-     				
+     		return;
      		}
      	}
         
@@ -208,7 +215,9 @@ public class Router extends Device
         			sendIcmpPacket(etherPacket, inIface, ICMP.TYPE_DESTINATION_UNREACHABLE, ICMP.CODE_UNREACHABLE_PORT);
         			break;
         		case IPv4.PROTOCOL_ICMP:
-        			sendIcmpPacket(etherPacket, inIface, ICMP.TYPE_ECHO_REPLY, ICMP.CODE_ECHO_REPLY);
+        			ICMP icmp = (ICMP)ipPacket.getPayload();
+        			if (icmp.getIcmpType() == ICMP.TYPE_ECHO_REQUEST)
+        			{ sendIcmpPacket(etherPacket, inIface, ICMP.TYPE_ECHO_REPLY, ICMP.CODE_ECHO_REPLY); }
         			break;
         		}
         		return; 
@@ -337,14 +346,14 @@ public class Router extends Device
 		ByteBuffer bb;
 		switch(icmpType)
 		{
-		case ICMP.TYPE_ECHO_REPLY:
+		case ICMP.TYPE_TIME_EXCEED:
 			// set icmp payload 
 			ICMP icmpPacket = (ICMP) ipPacket.getPayload();
 			icmp.setPayload(icmpPacket.getPayload());
 			break;
 		default:
 			// set icmp payload
-			length = 4 + ipPacket.getHeaderLength() + 8;
+			length = 4 + ipPacket.getHeaderLength() * 4 + 8;
 			databyte = new byte[length];
 			bb = ByteBuffer.wrap(databyte);
 			// 4 bytes paddings
@@ -408,7 +417,7 @@ public class Router extends Device
     	arp.setOpCode(ARP.OP_REQUEST);
     	arp.setSenderHardwareAddress(outIface.getMacAddress().toBytes());
     	arp.setSenderProtocolAddress(ByteBuffer.allocate(Integer.BYTES).putInt(outIface.getIpAddress()).array());
-    	arp.setTargetHardwareAddress(ByteBuffer.allocate(Integer.BYTES).putInt(0).array());
+    	arp.setTargetHardwareAddress(MACAddress.valueOf(0).toBytes());
     	arp.setTargetProtocolAddress(ByteBuffer.allocate(Integer.BYTES).putInt(ip).array());
     	
     	this.sendPacket(ether, outIface);
@@ -455,6 +464,7 @@ public class Router extends Device
 				}
 			}
 			// 3 times and no corresponding ARP reply. send destination unreachable
+			System.out.println(ipToQueue.containsKey(ip));
 			if (ipToQueue.containsKey(ip))
 			{
 				for (EtherpacketAndInIface ether : ipToQueue.get(ip)) {
@@ -497,18 +507,15 @@ public class Router extends Device
     	udp.setDestinationPort(UDP.RIP_PORT);
     	udp.setSourcePort(UDP.RIP_PORT);
     	// set rip
-    	rip.setEntries(null);
     	switch(ripCommand) 
     	{
     	case RIPv2.COMMAND_RESPONSE:
     		// set entries
     		for (Iface outIface : this.interfaces.values()) {
-    			rip.setEntries(null);
         		ether.setSourceMACAddress(outIface.getMacAddress().toBytes());
         		ip.setSourceAddress(outIface.getIpAddress());
 				for (RouteEntry entry : routeTable.getEntries()) {
-					RIPv2Entry ripEntry = new RIPv2Entry(entry.getDestinationAddress(), entry.getMaskAddress(),
-							entry.getMetric());
+					RIPv2Entry ripEntry = new RIPv2Entry(entry.getDestinationAddress(), entry.getMaskAddress(), entry.getMetric());
 					ripEntry.setNextHopAddress(outIface.getIpAddress());
 					rip.addEntry(ripEntry);
 				}
@@ -518,10 +525,15 @@ public class Router extends Device
         	break;
     	case RIPv2.COMMAND_REQUEST:
     		for (Iface outIface : this.interfaces.values()) {
-        		ether.setSourceMACAddress(outIface.getMacAddress().toBytes());
+    			ether.setSourceMACAddress(outIface.getMacAddress().toBytes());
         		ip.setSourceAddress(outIface.getIpAddress());
-        		rip.setCommand(RIPv2.COMMAND_REQUEST);
-        		this.sendPacket(ether, outIface);
+				for (RouteEntry entry : routeTable.getEntries()) {
+					RIPv2Entry ripEntry = new RIPv2Entry(entry.getDestinationAddress(), entry.getMaskAddress(), entry.getMetric());
+					ripEntry.setNextHopAddress(outIface.getIpAddress());
+					rip.addEntry(ripEntry);
+				}
+				rip.setCommand(RIPv2.COMMAND_REQUEST);
+				this.sendPacket(ether, outIface);
         	}
     		break;
     	}
@@ -549,7 +561,6 @@ public class Router extends Device
     	udp.setDestinationPort(UDP.RIP_PORT);
     	udp.setSourcePort(UDP.RIP_PORT);
     	// set rip
-    	rip.setEntries(null);
     	rip.setCommand(RIPv2.COMMAND_RESPONSE);
     	
     	// set entries
@@ -572,8 +583,9 @@ public class Router extends Device
     	public RouteTableHandler(Router router) {
     		this.router = router;
     		for (Iface iface : this.router.interfaces.values()) {
-    			this.router.routeTable.update2(iface.getIpAddress(), iface.getSubnetMask(), 0, iface, -1 , 0);
+    			this.router.routeTable.insert2(iface.getIpAddress(), 0, iface.getSubnetMask(), iface, -1, 0);
     		}
+//    		System.out.println(router.routeTable);
     		this.router.ripBroadcast(RIPv2.COMMAND_REQUEST);
     		this.router.ripBroadcast(RIPv2.COMMAND_RESPONSE);
     		this.lastResponseAt = System.currentTimeMillis();
@@ -584,16 +596,29 @@ public class Router extends Device
 			// TODO Auto-generated method stub
 			while (true) {
 				// send response every 10 seconds
-				if (System.currentTimeMillis() - this.lastResponseAt > RIP_RESPONSE_INTERVAL) {
-					router.ripBroadcast(RIPv2.COMMAND_RESPONSE);
-					this.lastResponseAt = System.currentTimeMillis();
-				}
-				
-				// if time out route table entries for which an update has not been received for more than 30 seconds
-				for (RouteEntry entry : this.router.routeTable.getEntries()) {
-					if (entry.getUpdatedAt() != -1 && (System.currentTimeMillis() - entry.getUpdatedAt()) > ROUTETEBLE_TIME_OUT) {
-						this.router.routeTable.remove(entry.getDestinationAddress(), entry.getMaskAddress());
+				synchronized(lockObj) {
+					if (System.currentTimeMillis() - this.lastResponseAt > RIP_RESPONSE_INTERVAL) {
+						router.ripBroadcast(RIPv2.COMMAND_RESPONSE);
+						this.lastResponseAt = System.currentTimeMillis();
 					}
+
+					// time out route table entries for which an update has not been received for
+					// more than 30 seconds
+
+					Iterator<RouteEntry> iter = this.router.routeTable.getEntries().iterator();
+					while (iter.hasNext()) {
+						RouteEntry entry = iter.next();
+						if (entry.getUpdatedAt() != -1
+								&& (System.currentTimeMillis() - entry.getUpdatedAt()) > ROUTETEBLE_TIME_OUT) {
+							iter.remove();
+						}
+					}
+				}
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
 			}
 			
@@ -607,17 +632,24 @@ public class Router extends Device
     }
     
     public void ripResponseHandler(RIPv2 rip, Iface inIface) {
-    	for (RIPv2Entry ripEntry : rip.getEntries()) {
-    		RouteEntry bestMatch = routeTable.lookup(ripEntry.getAddress());
-    		if (bestMatch.getDestinationAddress() == ripEntry.getAddress()) {
-    			if (bestMatch.getMetric() > ripEntry.getMetric() + 1) {
-					routeTable.update2(ripEntry.getAddress(), ripEntry.getSubnetMask(), ripEntry.getNextHopAddress(), inIface, System.currentTimeMillis() , ripEntry.getMetric()+1);
-    			}
-    			continue;
-    		} else {
-    			routeTable.insert2(ripEntry.getAddress(), ripEntry.getNextHopAddress(), ripEntry.getSubnetMask(), inIface, System.currentTimeMillis() , ripEntry.getMetric()+1);
-    		}
+    	synchronized(lockObj) {
+    		RouteEntry bestMatch;
+			for (RIPv2Entry ripEntry : rip.getEntries()) {
+				bestMatch = routeTable.lookup(ripEntry.getAddress());
+				if (bestMatch != null && bestMatch.getDestinationAddress() == ripEntry.getAddress()) {
+					if (bestMatch.getMetric() > ripEntry.getMetric() + 1) {
+						routeTable.update2(ripEntry.getAddress(), ripEntry.getSubnetMask(),
+								ripEntry.getNextHopAddress(), inIface, System.currentTimeMillis(),
+								ripEntry.getMetric() + 1);
+					}
+				} else {
+					routeTable.insert2(ripEntry.getAddress(), ripEntry.getNextHopAddress(), ripEntry.getSubnetMask(),
+							inIface, System.currentTimeMillis(), ripEntry.getMetric() + 1);
+				}
+//				System.out.println(routeTable);
+			}
     	}
+
     }
     
     
