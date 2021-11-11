@@ -388,7 +388,7 @@ public class Router extends Device
     	arp.setProtocolType(ARP.PROTO_TYPE_IP);
     	arp.setHardwareAddressLength((byte) Ethernet.DATALAYER_ADDRESS_LENGTH);
     	arp.setProtocolAddressLength((byte) 4);
-    	arp.setOpCode(ARP.OP_RARP_REPLY);
+    	arp.setOpCode(ARP.OP_REPLY);
     	arp.setSenderHardwareAddress(inIface.getMacAddress().toBytes());
     	arp.setSenderProtocolAddress(ByteBuffer.allocate(Integer.BYTES).putInt(inIface.getIpAddress()).array());
     	arp.setTargetHardwareAddress(arpPacket.getSenderHardwareAddress());
@@ -498,7 +498,7 @@ public class Router extends Device
     	// set ip header
     	ip.setDestinationAddress("224.0.0.9");
     	ip.setProtocol(IPv4.PROTOCOL_UDP);
-    	ip.setTtl((byte) (64));
+    	ip.setTtl((byte) (15));
     	
     	// set udp
     	udp.setDestinationPort(UDP.RIP_PORT);
@@ -552,7 +552,7 @@ public class Router extends Device
     	// set ip header
     	ip.setDestinationAddress(inIp.getSourceAddress());
     	ip.setProtocol(IPv4.PROTOCOL_UDP);
-    	ip.setTtl((byte) (64));
+    	ip.setTtl((byte) (15));
     	
     	// set udp
     	udp.setDestinationPort(UDP.RIP_PORT);
