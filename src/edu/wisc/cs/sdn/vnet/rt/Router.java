@@ -123,13 +123,14 @@ public class Router extends Device
 		
 		ARP arpPacket = (ARP)etherPacket.getPayload();
 		
-		if (arpPacket.getOpCode() == ARP.OP_RARP_REQUEST)
+		if (arpPacket.getOpCode() == ARP.OP_REQUEST)
 		{
+//			System.out.println("request");
 			int targetIp = ByteBuffer.wrap(arpPacket.getTargetProtocolAddress()).getInt();
 			if (targetIp != inIface.getIpAddress())
 				{ return; }
 			sendArpReply(etherPacket, inIface);
-		} else
+		} else if(arpPacket.getOpCode() == ARP.OP_REPLY)
 		{
 			// handle arp reply
 			int ip;
@@ -137,6 +138,7 @@ public class Router extends Device
 				ByteBuffer wrapped = ByteBuffer.wrap(arpPacket.getSenderProtocolAddress());
 				ip = wrapped.getInt();
 				arpCache.insert(MACAddress.valueOf(arpPacket.getSenderHardwareAddress()), ip);
+//				System.out.println(MACAddress.valueOf(arpPacket.getSenderHardwareAddress()));
 				if (ipToQueue.get(ip) != null) {
 					for (EtherpacketAndInIface ether : ipToQueue.get(ip)) {
 						ether.ethernet.setDestinationMACAddress(arpPacket.getSenderHardwareAddress());
@@ -159,7 +161,6 @@ public class Router extends Device
 		// Get IP header
 		IPv4 ipPacket = (IPv4)etherPacket.getPayload();
         System.out.println("Handle IP packet");
-        System.out.println(ipPacket.getProtocol());
 
         // Verify checksum
         short origCksum = ipPacket.getChecksum();
@@ -192,10 +193,8 @@ public class Router extends Device
      			{
      			case RIPv2.COMMAND_REQUEST:
      				sendRipReply(etherPacket, inIface);
-     				System.out.println("request");
      				break;
      			case RIPv2.COMMAND_RESPONSE:
-     				System.out.println("response");
      				ripResponseHandler(rip, inIface);
      				break;
      			}
@@ -274,6 +273,7 @@ public class Router extends Device
         			e.printStackTrace();
         		} return v;
         		});
+        	
         	if (ipToQueue.get(ipPacket.getDestinationAddress()).size() == 1)
         	{
         		Thread t = new Thread(new ArpRequestSender(ipPacket.getDestinationAddress(), ipToQueue, inIface, this));
@@ -394,6 +394,7 @@ public class Router extends Device
     	arp.setTargetHardwareAddress(arpPacket.getSenderHardwareAddress());
     	arp.setTargetProtocolAddress(arpPacket.getSenderProtocolAddress());
     	
+//    	System.out.println(MACAddress.valueOf(arp.getSenderHardwareAddress()));
     	this.sendPacket(ether, inIface);
     }
     
@@ -448,10 +449,7 @@ public class Router extends Device
 					// broadcast arp request
 					for (Iface iface : router.interfaces.values()) 
 					{
-						if (iface != inIface)
-						{
 							sendArpRequest(iface, ip);
-						}
 					}
 					try {
 						Thread.sleep((long) 1000);
@@ -464,7 +462,6 @@ public class Router extends Device
 				}
 			}
 			// 3 times and no corresponding ARP reply. send destination unreachable
-			System.out.println(ipToQueue.containsKey(ip));
 			if (ipToQueue.containsKey(ip))
 			{
 				for (EtherpacketAndInIface ether : ipToQueue.get(ip)) {
