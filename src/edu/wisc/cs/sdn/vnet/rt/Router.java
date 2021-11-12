@@ -265,8 +265,8 @@ public class Router extends Device
         ArpEntry arpEntry = this.arpCache.lookup(nextHop);
         if (null == arpEntry)
         {
-        	ipToQueue.computeIfAbsent(ipPacket.getDestinationAddress(), v -> new LinkedBlockingQueue<EtherpacketAndInIface>());
-        	ipToQueue.computeIfPresent(ipPacket.getDestinationAddress(), (k, v) -> {
+        	ipToQueue.computeIfAbsent(nextHop, v -> new LinkedBlockingQueue<EtherpacketAndInIface>());
+        	ipToQueue.computeIfPresent(nextHop, (k, v) -> {
         		try {
         			v.put(new EtherpacketAndInIface(etherPacket, inIface));
         		} catch (InterruptedException e) {
@@ -274,9 +274,9 @@ public class Router extends Device
         		} return v;
         		});
         	
-        	if (ipToQueue.get(ipPacket.getDestinationAddress()).size() == 1)
+        	if (ipToQueue.get(nextHop) != null && ipToQueue.get(nextHop).size() == 1)
         	{
-        		Thread t = new Thread(new ArpRequestSender(ipPacket.getDestinationAddress(), ipToQueue, inIface, this));
+        		Thread t = new Thread(new ArpRequestSender(nextHop, ipToQueue, inIface, this));
         		t.start();
         	}
         	
