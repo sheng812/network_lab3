@@ -43,6 +43,10 @@ public class RouteTable
 	        RouteEntry bestMatch = null;
 	        for (RouteEntry entry : this.entries)
 	        {
+	        	if (ip == entry.getDestinationAddress()) {
+	        		bestMatch = entry;
+	        		break;
+	        	}
 	           int maskedDst = ip & entry.getMaskAddress();
 	           int entrySubnet = entry.getDestinationAddress() 
 	               & entry.getMaskAddress();
